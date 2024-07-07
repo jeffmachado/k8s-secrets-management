@@ -107,3 +107,44 @@ bao policy write <nome_politica> ./<arquivo_policy>.hcl
 ```
 
 As políticas podem ser criadas com diversos níveis de complexidade. Saiba mais na [documentação oficial]('https://openbao.org/docs/commands/policy/').
+
+### Criando token
+```
+bao token create -policy="<nome_politica>"
+```
+
+Pegue a informação do token que saiu no output, e salve-o em base64. Ele será usado nas próximas etapas.
+```
+echo "<seu_token>" | base64
+``` 
+
+## External Secrets
+A ferramenta tem por objetivo gerenciar segredos e integrar/sincronizar com soluções externas.
+A documentação falar por si, [saiba mais aqui](https://github.com/external-secrets/external-secrets).
+
+### Criando Secret Store
+Use o providor do hashicorp vault, devido a atual compatiblidade, porém, é importante destacar que precisamos acompanhar se futuramente surge um provider apenas do openbao. [Vide link](https://external-secrets.io/main/provider/hashicorp-vault/)
+
+Utilize o arquivo `external-secrets/secret_store.yaml.tpl` para construir uma secret que possua o token de acesso ao Openbao (criado anteriormente) e também o SecretStore, que é o elo que conecta o External Secrets ao seu Vault.
+
+O kind SecretStore é basicamente o seguinte:
+``` 
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: vault-backend
+spec:
+  provider:
+    vault:
+      server: "http://my.vault.server:8200"
+      path: "secret"
+      # Version is the Vault KV secret engine version.
+      # This can be either "v1" or "v2", defaults to "v2"
+      version: "v2"
+      auth:
+        # points to a secret that contains a vault token
+        # https://www.vaultproject.io/docs/auth/token
+        tokenSecretRef:
+          name: "vault-token"
+          key: "token"
+```
