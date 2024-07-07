@@ -1,0 +1,9 @@
+server:
+  dev:
+    enabled: true
+
+    # Set VAULT_DEV_ROOT_TOKEN_ID value
+    devRootToken: "pensaemumtoken"
+
+ui:
+  enabled: true
