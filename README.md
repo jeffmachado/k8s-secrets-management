@@ -1,3 +1,35 @@
+# Local setup
+
+## [Linux] [x86-64] Instalando componentes de estação de trabalho
+
+### Está usando WSL? Leia isso :D
+Quando usando WSL, a virtualização com minikube e rootless é mais complicada e com podman pode ser um desafio (embora possível).
+Sugiro que siga as [orientações desse gist](https://gist.github.com/wholroyd/748e09ca0b78897750791172b2abb051), que tem boas dias sobre setup local para que o minikube fique redondinho.
+
+### Minikube
+```
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+```
+
+### Kubectl
+```
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+out=`echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check`
+if [[ $out != "kubectl: OK" ]]; then
+    echo "Not valid kubectl binary"
+    exit
+fi
+
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+```
+
+### Helm
+```
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
 # Usando as ferramentas
 
 ## Minikube
