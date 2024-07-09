@@ -30,6 +30,38 @@ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
 
+### Instalando componentes no cluster
+
+#### Iniciando Minikube
+Primeiramente, vamos iniciar o minikube para deixar nosso cluster rodando. Caso esteja usando outro Kubernetes, ok. Apenas garanta tudo online e conectado via kubectl.
+
+```
+minikube start
+```
+
+#### Openbao via helm
+
+## OpenBao
+Adicione o repositório e instale a release
+```
+helm repo add openbao https://openbao.github.io/openbao-helm
+
+helm install openbao -f openbao/values-custom-openbao.yaml -n openbao --create-namespace openbao/openbao
+```
+> Saiba todos os parâmetros do values no github oficial: https://github.com/openbao/openbao-helm/blob/main/charts/openbao/values.yaml
+
+#### External Secrets via helm
+Adicione o repositório e instale a release
+```
+helm repo add external-secrets https://charts.external-secrets.io
+
+helm install external-secrets \
+   external-secrets/external-secrets \
+    -n external-secrets \
+    --create-namespace \
+    --set installCRDs=true
+```
+
 # Usando as ferramentas
 
 ## Minikube
@@ -46,49 +78,53 @@ Existem diversas maneiras de fazer isso, porém a opção abaixo tende a ser a m
 ```
 minikube service <nome_do_svc> --url
 ```
+> Você pode descobrir os services executando `minikube service list`. Obs: Não precisa informar service/ ou svc/ antes do nome. 
+
 Você também pode utilizar `kubectl port-forward` sem problemas. Por exemplo:
 ```
-kubectl port-forward svc/openbao 8200:8200
+kubectl port-forward svc/<nome_do_svc> 8200:8200
 ```
 
 ## OpenBAO
 Como o OpenBAO é um fork do Hashcorp vault, a maioria dos utilitários funcional de maneira igual.
 
-Primeiramente, exporte seu token de acesso:
+Caso esteja utilizando o modo produtivo, é necessário ter feito o unseal e gerado o token de acesso. Se está usando o padrão desse lab, você pode pegar o token no arquivo `openbao/values-custom-openbao.yaml`.
+
+Primeiramente, exporte o endereço do servidor e o token de acesso:
 ```
 export VAULT_TOKEN="<seu_token_aqui>"
+export VAULT_ADDR="http://<servidor>:<porta>"
 ```
+> O servidor/porta deve ser obtido conforme descrito no tópico `Acessando services privados`
+
 Esse token permitirá que você, via shell, interaja com o serviço do OpenBAO.
 
-Caso esteja utilizando o modo produtivo, é necessário ter feito o unseal, criado as suas políticas e gerado o token de acesso.
 
 Uma vez que o serviço está sendo executado, você pode acessar ele via SDK ou Curl.
 
 ### Instalando CLI
 O OpenBAO também conta com um CLI para interação. Baixe e instale o binário conforme orientações [do site](https://openbao.org/downloads/).
 
-Caso não queira, tem como fazer via Curl ou SDK também, mas terá que adaptar interação. Exemplo:
+Caso não queira, tem como fazer via Curl ou SDK também, mas terá que adaptar interação de todos os comandos a seguir. Exemplo:
 
 ```
-curl \
-    --header "X-Vault-Token: $VAULT_TOKEN" \
-    http://<server>:<porta>/v1/secret/data/my-secret-password 
+curl --header "X-Vault-Token: $VAULT_TOKEN" http://<bao_server>:<bao_port>/v2/secret/data/my-secret-password 
 ```
 
 ### Criando paths
 Paths é a estrutura organizacional das suas secrets, que poderão ser usadas depois para posicionar suas políticas.
 ```
-bao secrets enable -path=<nome_do_path> kv
+bao secrets enable -path=<nome_do_path> -version=2 kv
 ```
 
 ### Obter segredos
 ```
-openbao kv get <nome_do_path>/<sub_path>
+bao kv get <nome_do_path>
 ```
 
 ### Criar segredos
 ```
-openbao kv put <nome_do_path>/<sub_path> key1=value1 key2=value2
+bao kv put <nome_do_path>/<sub_path> key1=value1 key2=value2
 ```
 
 ### Criar políticas
@@ -115,22 +151,22 @@ bao token create -policy="<nome_politica>"
 
 Pegue a informação do token que saiu no output, e salve-o em base64. Ele será usado nas próximas etapas.
 ```
-echo "<seu_token>" | base64
+echo -n "<seu_token>" | base64
 ``` 
 
 ## External Secrets
 A ferramenta tem por objetivo gerenciar segredos e integrar/sincronizar com soluções externas.
 A documentação falar por si, [saiba mais aqui](https://github.com/external-secrets/external-secrets).
 
-### Criando Secret Store
-Use o providor do hashicorp vault, devido a atual compatiblidade, porém, é importante destacar que precisamos acompanhar se futuramente surge um provider apenas do openbao. [Vide link](https://external-secrets.io/main/provider/hashicorp-vault/)
+### Criando Cluster Secret Store
+Use o provider do hashicorp vault, devido a atual compatiblidade, porém, é importante destacar que precisamos acompanhar se futuramente surge um provider apenas do openbao. [Vide link](https://external-secrets.io/main/provider/hashicorp-vault/)
 
-Utilize o arquivo `external-secrets/secret_store.yaml.tpl` para construir uma secret que possua o token de acesso ao Openbao (criado anteriormente) e também o SecretStore, que é o elo que conecta o External Secrets ao seu Vault.
+Utilize o arquivo `external-secrets/cluster_secret_store.yaml.tpl` para construir uma secret que possua o token de acesso ao Openbao (criado anteriormente) e também o ClusterSecretStore, que é o elo que conecta o External Secrets ao seu Vault.
 
-O kind SecretStore é basicamente o seguinte:
+O kind ClusterSecretStore é basicamente o seguinte:
 ``` 
 apiVersion: external-secrets.io/v1beta1
-kind: SecretStore
+kind: ClusterSecretStore
 metadata:
   name: vault-backend
 spec:
@@ -148,3 +184,27 @@ spec:
           name: "vault-token"
           key: "token"
 ```
+
+No mesmo arquivo `external-secrets/cluster_secret_store.yaml.tpl` já tem um manifesto para criar a secret que salvará o token de acesso ao openbao (criado nas seções anteriores). 
+Apenas substitua o valor do token.
+Entretanto, você pode usar uma já existente e remover esse bloco de lá.
+
+Para aplicar, vamos com o clássico:
+```
+kubectl apply -f external-secrets/<seu_arquivo>.yaml
+```
+
+### Criando External Secret
+É nessa parte em que as coisas se conectam.
+Ao criar o External Secret, você estará dizendo a partir de qual vault você quer extrair qual segredo e conectar com qual secret do Kubernetes.
+
+
+## Dicas adicionais
+
+### Quer testar as coisas?
+Utilize um container de teste para simular chamadas ao openbao e afins.
+Um jeito fácil de iniciar é com o seguinte comando:
+```
+kubectl run -ti --tty --rm debug --image=alpine --restart=Never -- sh 
+```
+Após isso, instale o CURL e interaja com o openbao por exemplo.
